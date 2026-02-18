@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="20dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="حذف پیامک با Accessibility"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="20dp"/>
+
+    <Button
+        android:id="@+id/btnCheckAccessibility"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="چک کردن Accessibility"
+        android:layout_marginBottom="15dp"/>
+
+    <Button
+        android:id="@+id/btnDeleteLastSms"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="حذف آخرین پیامک"
+        android:backgroundTint="#F44336"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="توجه: باید Accessibility رو فعال کنید"
+        android:textSize="12sp"
+        android:layout_marginTop="20dp"
+        android:gravity="center"/>
+
+</LinearLayout>
