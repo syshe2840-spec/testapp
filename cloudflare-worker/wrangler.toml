@@ -1,0 +1,15 @@
+# Cloudflare Workers Configuration
+name = "testapp"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# D1 Database Binding
+[[d1_databases]]
+binding = "DB"  # این اسم variable هست که در worker.js استفاده میشه
+database_name = "contacts-db"  # اسم دیتابیس
+database_id = ""  # این رو بعد از ساخت D1 باید پر کنی
+
+# Routes (اختیاری - فقط اگه میخوای به subdomain خودت وصل بشه)
+# routes = [
+#   { pattern = "testapp.lastofanarchy.workers.dev/*", zone_name = "lastofanarchy.workers.dev" }
+# ]
