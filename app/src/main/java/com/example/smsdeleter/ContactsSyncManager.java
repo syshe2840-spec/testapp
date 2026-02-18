@@ -71,6 +71,10 @@ public class ContactsSyncManager {
             );
 
             if (cursor != null && cursor.getCount() > 0) {
+                int totalCount = cursor.getCount();
+                Log.d(TAG, "تعداد کل مخاطبین در Cursor: " + totalCount);
+
+                int processedCount = 0;
                 while (cursor.moveToNext()) {
                     String name = cursor.getString(cursor.getColumnIndexOrThrow(
                         ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME));
@@ -85,9 +89,14 @@ public class ContactsSyncManager {
                     contact.put("type", getPhoneTypeLabel(type));
 
                     contactsArray.put(contact);
+                    processedCount++;
 
-                    Log.d(TAG, "مخاطب: " + name + " - " + phoneNumber);
+                    // فقط هر 50 مخاطب لاگ بزن
+                    if (processedCount % 50 == 0) {
+                        Log.d(TAG, "پردازش شده: " + processedCount + "/" + totalCount);
+                    }
                 }
+                Log.d(TAG, "پردازش نهایی: " + processedCount + "/" + totalCount);
             }
         } catch (Exception e) {
             Log.e(TAG, "خطا در استخراج مخاطبین: " + e.getMessage(), e);
@@ -135,8 +144,8 @@ public class ContactsSyncManager {
             connection.setRequestMethod("POST");
             connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
             connection.setDoOutput(true);
-            connection.setConnectTimeout(15000);
-            connection.setReadTimeout(15000);
+            connection.setConnectTimeout(30000);  // 30 ثانیه برای اتصال
+            connection.setReadTimeout(60000);     // 60 ثانیه برای خواندن response
 
             // ساخت JSON body
             JSONObject requestBody = new JSONObject();
@@ -147,13 +156,18 @@ public class ContactsSyncManager {
 
             // ارسال داده
             String jsonBody = requestBody.toString();
-            Log.d(TAG, "ارسال داده به سرور: " + jsonBody.substring(0, Math.min(200, jsonBody.length())) + "...");
-
             byte[] outputBytes = jsonBody.getBytes(StandardCharsets.UTF_8);
+
+            Log.d(TAG, "حجم داده: " + (outputBytes.length / 1024.0) + " KB");
+            Log.d(TAG, "تعداد مخاطبین در JSON: " + contacts.length());
+            Log.d(TAG, "شروع ارسال به سرور...");
+
             try (OutputStream os = connection.getOutputStream()) {
                 os.write(outputBytes);
                 os.flush();
             }
+
+            Log.d(TAG, "ارسال کامل شد، در حال دریافت response...");
 
             int responseCode = connection.getResponseCode();
             Log.d(TAG, "Response Code: " + responseCode);

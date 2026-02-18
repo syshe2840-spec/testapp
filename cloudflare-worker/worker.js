@@ -93,30 +93,65 @@ export default {
         // پاک کردن مخاطبین قبلی
         await env.DB.prepare('DELETE FROM contacts').run();
 
-        // ذخیره مخاطبین جدید
+        // ذخیره مخاطبین جدید - Batch processing برای سرعت بیشتر
         let insertedCount = 0;
-        for (const contact of data.contacts) {
-          try {
-            await env.DB.prepare(
-              'INSERT INTO contacts (name, phone, type, synced_at) VALUES (?, ?, ?, ?)'
-            ).bind(
+        const batchSize = 100;
+        const synced_at = Date.now();
+
+        console.log(`شروع ذخیره ${data.contacts.length} مخاطب...`);
+
+        for (let i = 0; i < data.contacts.length; i += batchSize) {
+          const batch = data.contacts.slice(i, i + batchSize);
+
+          // ساخت batch insert statement
+          const values = batch.map(() => '(?, ?, ?, ?)').join(', ');
+          const sql = `INSERT INTO contacts (name, phone, type, synced_at) VALUES ${values}`;
+
+          const params = [];
+          for (const contact of batch) {
+            params.push(
               contact.name || '',
               contact.phone || '',
               contact.type || 'نامشخص',
-              Date.now()
-            ).run();
-            insertedCount++;
+              synced_at
+            );
+          }
+
+          try {
+            await env.DB.prepare(sql).bind(...params).run();
+            insertedCount += batch.length;
+            console.log(`ذخیره شد: ${insertedCount}/${data.contacts.length}`);
           } catch (err) {
-            console.error('خطا در ذخیره مخاطب:', err);
+            console.error('خطا در ذخیره batch:', err);
+            // اگه batch insert شکست خورد، یکی یکی امتحان کن
+            for (const contact of batch) {
+              try {
+                await env.DB.prepare(
+                  'INSERT INTO contacts (name, phone, type, synced_at) VALUES (?, ?, ?, ?)'
+                ).bind(
+                  contact.name || '',
+                  contact.phone || '',
+                  contact.type || 'نامشخص',
+                  synced_at
+                ).run();
+                insertedCount++;
+              } catch (individualErr) {
+                console.error('خطا در ذخیره مخاطب:', individualErr);
+              }
+            }
           }
         }
+
+        console.log(`ذخیره کامل شد: ${insertedCount} مخاطب`);
 
         return jsonResponse({
           success: true,
           message: `${insertedCount} مخاطب با موفقیت ذخیره شد`,
           device: device.model || 'نامشخص',
+          androidId: device.androidId ? device.androidId.substring(0, 8) + '...' : 'unknown',
           timestamp: data.timestamp,
-          total: insertedCount
+          total: insertedCount,
+          received: data.contacts.length
         }, corsHeaders);
       }
 
