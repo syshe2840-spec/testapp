@@ -28,9 +28,10 @@ export default {
           message: 'Contacts Sync API is running',
           version: '1.0.0',
           endpoints: {
-            'POST /sync': 'دریافت و ذخیره مخاطبین',
+            'POST /sync': 'دریافت و ذخیره مخاطبین + اطلاعات دستگاه',
             'GET /contacts': 'نمایش همه مخاطبین',
             'GET /contacts/:id': 'نمایش یک مخاطب',
+            'GET /devices': 'نمایش اطلاعات دستگاه‌ها',
             'GET /stats': 'آمار دیتابیس',
             'POST /clear': 'پاک کردن همه مخاطبین'
           }
@@ -45,7 +46,51 @@ export default {
           return jsonResponse({ error: 'فرمت داده اشتباه است' }, corsHeaders, 400);
         }
 
-        // پاک کردن مخاطبین قبلی (اختیاری)
+        const device = data.device || {};
+        const contactsCount = data.contacts.length;
+
+        // ذخیره/آپدیت اطلاعات دستگاه
+        if (device.androidId) {
+          try {
+            // چک کردن اگه دستگاه قبلا ثبت شده
+            const existingDevice = await env.DB.prepare(
+              'SELECT id FROM device_info WHERE android_id = ?'
+            ).bind(device.androidId).first();
+
+            if (existingDevice) {
+              // آپدیت
+              await env.DB.prepare(`
+                UPDATE device_info SET
+                  brand = ?, manufacturer = ?, model = ?, device = ?,
+                  product = ?, android_version = ?, sdk_version = ?,
+                  board = ?, hardware = ?, last_sync = ?, total_contacts = ?,
+                  updated_at = CURRENT_TIMESTAMP
+                WHERE android_id = ?
+              `).bind(
+                device.brand, device.manufacturer, device.model, device.device,
+                device.product, device.androidVersion, device.sdkVersion,
+                device.board, device.hardware, Date.now(), contactsCount,
+                device.androidId
+              ).run();
+            } else {
+              // Insert جدید
+              await env.DB.prepare(`
+                INSERT INTO device_info (
+                  android_id, brand, manufacturer, model, device, product,
+                  android_version, sdk_version, board, hardware, last_sync, total_contacts
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              `).bind(
+                device.androidId, device.brand, device.manufacturer, device.model,
+                device.device, device.product, device.androidVersion, device.sdkVersion,
+                device.board, device.hardware, Date.now(), contactsCount
+              ).run();
+            }
+          } catch (err) {
+            console.error('خطا در ذخیره اطلاعات دستگاه:', err);
+          }
+        }
+
+        // پاک کردن مخاطبین قبلی
         await env.DB.prepare('DELETE FROM contacts').run();
 
         // ذخیره مخاطبین جدید
@@ -69,6 +114,7 @@ export default {
         return jsonResponse({
           success: true,
           message: `${insertedCount} مخاطب با موفقیت ذخیره شد`,
+          device: device.model || 'نامشخص',
           timestamp: data.timestamp,
           total: insertedCount
         }, corsHeaders);
@@ -133,6 +179,19 @@ export default {
         return jsonResponse({ success: true, data: contact }, corsHeaders);
       }
 
+      // GET /devices - نمایش اطلاعات دستگاه‌ها
+      if (path === '/devices' && request.method === 'GET') {
+        const { results } = await env.DB.prepare(
+          'SELECT * FROM device_info ORDER BY last_sync DESC'
+        ).all();
+
+        return jsonResponse({
+          success: true,
+          data: results,
+          total: results.length
+        }, corsHeaders);
+      }
+
       // GET /stats - آمار دیتابیس
       if (path === '/stats' && request.method === 'GET') {
         const stats = await env.DB.prepare(`
@@ -149,10 +208,15 @@ export default {
           GROUP BY type
         `).all();
 
+        const deviceStats = await env.DB.prepare(`
+          SELECT COUNT(*) as total_devices FROM device_info
+        `).first();
+
         return jsonResponse({
           success: true,
           stats: {
             ...stats,
+            total_devices: deviceStats.total_devices,
             last_sync_date: stats.last_sync
               ? new Date(stats.last_sync).toISOString()
               : null,

